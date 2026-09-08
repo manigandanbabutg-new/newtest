@@ -3,16 +3,46 @@ import re
 import urllib.parse
 import urllib.request
 
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, Response
 
 # =========================================================
-# FLASK APPLICATION
+# APPLICATION
 # =========================================================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-INDEX_FILE = os.path.join(BASE_DIR, "templates", "index.html")
 
 app = Flask(__name__)
+
+
+# =========================================================
+# FIND INDEX.HTML
+# =========================================================
+
+def find_index_file():
+
+    possible_paths = [
+        os.path.join(BASE_DIR, "templates", "index.html"),
+        os.path.join(BASE_DIR, "Templates", "index.html"),
+        os.path.join(BASE_DIR, "index.html"),
+    ]
+
+    for path in possible_paths:
+        if os.path.isfile(path):
+            return path
+
+    # Search inside all project folders
+    for root, dirs, files in os.walk(BASE_DIR):
+
+        # Ignore unnecessary folders
+        dirs[:] = [
+            d for d in dirs
+            if d not in [".git", ".venv", "__pycache__"]
+        ]
+
+        if "index.html" in files:
+            return os.path.join(root, "index.html")
+
+    return None
 
 
 # =========================================================
@@ -48,19 +78,14 @@ def get_vid(q):
     except Exception:
         return None
 
-
-@app.route("/", methods=["GET"])
+@app.route("/")
 def home():
     return render_template("index.html")
-
 
 @app.route("/agent", methods=["POST"])
 def ai_agent_router():
 
     d = request.get_json(silent=True) or {}
-
-    if not d:
-        abort(400)
 
     cmd_raw = d.get("command") or d.get("text_command")
 
@@ -93,6 +118,7 @@ def ai_agent_router():
         vid = get_vid(q)
 
         if vid:
+
             target = (
                 f"https://www.youtube.com/embed/"
                 f"{vid}?autoplay=1&mute=1"
@@ -108,72 +134,7 @@ def ai_agent_router():
         for k in ["gmail", "email", "mail", "message"]
     ):
 
-        to = ""
-        body = ""
-
-        clean_cmd = re.sub(
-            r"^(please\s+)?(open\s+)?"
-            r"(gmail|email|mail|message)\s*",
-            "",
-            cmd
-        ).strip()
-
-        clean_cmd = re.sub(
-            r"\b(com(and|mand)?)\b",
-            "com",
-            clean_cmd
-        )
-
-        parts = re.split(
-            r"\b(type|write|saying|message|content|with body)\b",
-            clean_cmd
-        )
-
-        recip_part = parts[0].strip()
-
-        recip_part = re.sub(
-            r"^(update\s+to|to|send\s+to|and\s+update\s+to)\s*",
-            "",
-            recip_part
-        ).strip()
-
-        if len(parts) > 1:
-            body = parts[-1].strip()
-
-        if recip_part:
-
-            c = (
-                recip_part
-                .replace(" at ", "@")
-                .replace(" dot ", ".")
-                .replace(" ", "")
-            )
-
-            c = re.sub(
-                r"[^a-zA-Z0-9@._%-]",
-                "",
-                c
-            )
-
-            to = (
-                c
-                if "@" in c
-                else f"{c}@gmail.com"
-            )
-
-        base = (
-            "https://mail.google.com/mail/u/0/"
-            "?view=cm&fs=1"
-        )
-
-        params = urllib.parse.urlencode({
-            "to": to,
-            "body": body
-        })
-
-        target = f"{base}&{params}"
-
-        msg = f"Drafting email to {to}"
+        msg = "Email command received."
 
     else:
 
@@ -186,46 +147,60 @@ def ai_agent_router():
     })
 
 
-if __name__ == "__main__":
-
-    app.run(
-        host="0.0.0.0",
-        port=int(
-            os.environ.get(
-                "PORT",
-                8000
-            )
-        )
-    )
-"""
-
-
 # =========================================================
 # HOME PAGE
 # =========================================================
 
-@app.route("/", methods=["GET"])
+@app.route("/")
 def index():
 
-    if not os.path.exists(INDEX_FILE):
+    index_file = find_index_file()
 
-        return jsonify({
-            "success": False,
-            "error": "index.html not found",
-            "expected_path": INDEX_FILE
-        }), 500
+    if index_file:
 
-    return send_file(INDEX_FILE)
+        return send_file(index_file)
+
+    return Response(
+        """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Python Code Fixer</title>
+        </head>
+        <body style="
+            background:#0d1117;
+            color:white;
+            font-family:Arial;
+            text-align:center;
+            padding:60px;
+        ">
+            <h1>Python Code Fixer</h1>
+            <p style="color:#f2cc60;">
+                ⚠ index.html was not found in the deployed project.
+            </p>
+            <p>
+                Check the Render deployment and repository branch.
+            </p>
+            <p>
+                Use <b>/debug</b> to inspect the deployed files.
+            </p>
+        </body>
+        </html>
+        """,
+        status=500,
+        mimetype="text/html"
+    )
 
 
 # =========================================================
-# INDENTATION CHECK
+# RUN - INDENTATION ONLY
 # =========================================================
 
 @app.route("/run", methods=["POST"])
 def run_code():
 
     data = request.get_json(silent=True) or {}
+
     code = data.get("code", "")
 
     if not code.strip():
@@ -277,7 +252,7 @@ def run_code():
 
 
 # =========================================================
-# FIX CODE
+# FIX
 # =========================================================
 
 @app.route("/fix", methods=["POST"])
@@ -291,15 +266,54 @@ def fix_code():
 
 
 # =========================================================
-# HEALTH CHECK
+# DEBUG
 # =========================================================
 
-@app.route("/health", methods=["GET"])
+@app.route("/debug")
+def debug():
+
+    index_file = find_index_file()
+
+    all_files = []
+
+    for root, dirs, files in os.walk(BASE_DIR):
+
+        dirs[:] = [
+            d for d in dirs
+            if d not in [".git", ".venv", "__pycache__"]
+        ]
+
+        for file in files:
+
+            relative = os.path.relpath(
+                os.path.join(root, file),
+                BASE_DIR
+            )
+
+            all_files.append(relative)
+
+    return jsonify({
+        "base_directory": BASE_DIR,
+        "index_found": index_file is not None,
+        "index_path": index_file,
+        "files": all_files
+    })
+
+
+# =========================================================
+# HEALTH
+# =========================================================
+
+@app.route("/health")
 def health():
+
+    index_file = find_index_file()
 
     return jsonify({
         "status": "ok",
-        "index_exists": os.path.exists(INDEX_FILE)
+        "base_directory": BASE_DIR,
+        "index_exists": index_file is not None,
+        "index_path": index_file
     })
 
 
