@@ -1,0 +1,74 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Python Code Fixer</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0d1117;color:#eee;font:14px Arial;padding:25px}
+h1{text-align:center;color:#58a6ff}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:15px}
+h3{margin:0 0 10px}.editor{width:100%;height:230px;background:#010409;color:#c9d1d9;border:1px solid #30363d;border-radius:8px;padding:12px;font:13px monospace;resize:vertical}
+.warning{margin:10px 0;color:#f2cc60}.buttons{display:flex;gap:10px}
+button{padding:9px 18px;border:0;border-radius:7px;cursor:pointer;font-weight:bold}
+.run{background:#238636;color:white}.fix{background:#8957e5;color:white}
+.status{margin-top:8px;font-size:13px}
+@media(max-width:800px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+
+<body>
+<h1>🐍 Python Code Fixer</h1>
+<div class="grid" id="editors"></div>
+
+<script>
+const container=document.getElementById("editors");
+
+for(let i=1;i<=5;i++){
+  container.innerHTML+=`
+  <div class="card">
+    <h3>Python Editor ${i}</h3>
+    <textarea class="editor" id="code${i}">
+def hello():
+print("Hello World")
+    </textarea>
+    <div class="warning" id="warn${i}">⚠ Indentation warning</div>
+    <div class="buttons">
+      <button class="run" onclick="runCode(${i})">Run</button>
+      <button class="fix" onclick="fixCode(${i})">Fix</button>
+    </div>
+    <div class="status" id="status${i}"></div>
+  </div>`;
+}
+
+async function runCode(i){
+  const code=document.getElementById("code"+i).value;
+  const res=await fetch("/run",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({code})
+  });
+  const data=await res.json();
+  document.getElementById("warn"+i).textContent=
+    data.valid ? "✓ Indentation is correct" : "⚠ "+data.message;
+}
+
+async function fixCode(i){
+  const res=await fetch("/fix",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({code:document.getElementById("code"+i).value})
+  });
+  const data=await res.json();
+
+  if(data.success){
+    document.getElementById("code"+i).value=data.code;
+    document.getElementById("warn"+i).textContent="✓ Code fixed successfully";
+    document.getElementById("status"+i).textContent="Clean registered code loaded.";
+  }
+}
+</script>
+</body>
+</html>
+```
